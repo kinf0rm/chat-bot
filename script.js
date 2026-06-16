@@ -1,12 +1,11 @@
-// Состояние чат-бота
+// Единственный экземпляр чат-бота
 class ChatBot {
     constructor() {
-        this.state = 'idle'; // idle, waiting_name, waiting_numbers, waiting_operation
+        this.state = 'idle';
         this.userName = '';
         this.numbers = [];
         this.operation = '';
         this.isProcessing = false;
-        this.isInitialized = false;
         this.messagesContainer = document.getElementById('chatMessages');
         this.inputField = document.getElementById('messageInput');
         this.sendButton = document.getElementById('sendButton');
@@ -15,10 +14,6 @@ class ChatBot {
     }
 
     init() {
-        // Проверяем, не инициализирован ли уже бот
-        if (this.isInitialized) return;
-        this.isInitialized = true;
-
         this.inputField.addEventListener('input', () => this.handleInputChange());
         this.sendButton.addEventListener('click', () => this.handleSend());
         this.inputField.addEventListener('keydown', (e) => {
@@ -28,7 +23,7 @@ class ChatBot {
             }
         });
 
-        // Приветственное сообщение (только один раз)
+        // Приветственное сообщение
         setTimeout(() => {
             this.addMessage('bot', '👋 Привет! Я Чат-бот калькулятор. Напиши /start для начала общения.');
         }, 300);
@@ -44,7 +39,6 @@ class ChatBot {
             this.sendButton.disabled = true;
         }
 
-        // Автоматическое изменение высоты текстового поля
         this.inputField.style.height = 'auto';
         this.inputField.style.height = Math.min(this.inputField.scrollHeight, 80) + 'px';
     }
@@ -53,44 +47,27 @@ class ChatBot {
         const text = this.inputField.value.trim();
         if (!text || this.isProcessing) return;
 
-        // Добавляем сообщение пользователя
         this.addMessage('user', text);
         this.inputField.value = '';
         this.inputField.style.height = 'auto';
         this.sendButton.classList.remove('active');
         this.sendButton.disabled = true;
 
-        // Показываем индикатор печати
         this.showTypingIndicator();
-
-        // Обрабатываем команду
         await this.processCommand(text);
-
-        // Убираем индикатор печати
         this.hideTypingIndicator();
     }
 
     async processCommand(text) {
         this.isProcessing = true;
-
-        // Имитация задержки для реализма
         await this.delay(500 + Math.random() * 500);
 
         try {
-            // Проверяем команды в любом состоянии
+            // Обработка команд /start и /stop в первую очередь
             if (text === '/start') {
-                if (this.state === 'idle' || this.state === 'waiting_name') {
-                    this.state = 'waiting_name';
-                    this.userName = '';
-                    this.numbers = [];
-                    this.operation = '';
-                    this.addMessage('bot', 'Привет, меня зовут Чат-бот, а как зовут тебя?');
-                } else {
-                    // Если уже в процессе, сбрасываем и начинаем заново
-                    this.resetState();
-                    this.state = 'waiting_name';
-                    this.addMessage('bot', 'Начинаем заново! Как тебя зовут?');
-                }
+                this.resetState();
+                this.state = 'waiting_name';
+                this.addMessage('bot', 'Привет, меня зовут Чат-бот, а как зовут тебя?');
                 this.isProcessing = false;
                 this.scrollToBottom();
                 return;
@@ -104,7 +81,7 @@ class ChatBot {
                 return;
             }
 
-            // Обработка по состоянию
+            // Основная логика по состояниям
             if (this.state === 'idle') {
                 this.addMessage('bot', 'Введите команду /start, для начала общения');
             } 
@@ -140,7 +117,7 @@ class ChatBot {
                         const result = this.calculate();
                         const expression = this.numbers.join(` ${this.operation} `);
                         this.addMessage('bot', `Результат: ${expression} = ${result}`);
-                        this.addMessage('bot', `Отличный результат! Могу еще что-то посчитать. Введи /start для нового вычисления или /stop для завершения`);
+                        this.addMessage('bot', `Могу еще что-то посчитать. Введи /start для нового вычисления или /stop для завершения`);
                         this.resetState();
                     } catch (error) {
                         this.addMessage('bot', `Ошибка: ${error.message}`);
@@ -191,23 +168,18 @@ class ChatBot {
     }
 
     addMessage(type, content) {
-        // Создаем контейнер сообщения
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}`;
 
-        // Аватар
         const avatar = document.createElement('img');
         avatar.className = 'avatar';
         avatar.src = type === 'bot' ? 'assets/bot_avatar.png' : 'assets/user_avatar.png';
         avatar.alt = type === 'bot' ? 'Бот' : 'Пользователь';
-        avatar.loading = 'lazy';
 
-        // Контент сообщения
         const contentDiv = document.createElement('div');
         contentDiv.className = 'message-content';
         contentDiv.textContent = content;
 
-        // Собираем сообщение
         messageDiv.appendChild(avatar);
         messageDiv.appendChild(contentDiv);
         
@@ -226,7 +198,6 @@ class ChatBot {
         avatar.className = 'avatar';
         avatar.src = 'assets/bot_avatar.png';
         avatar.alt = 'Бот печатает';
-        avatar.loading = 'lazy';
         
         const dots = document.createElement('div');
         dots.className = 'typing-dots';
@@ -256,18 +227,26 @@ class ChatBot {
     }
 }
 
-// Инициализация чат-бота при загрузке страницы
-// Используем DOMContentLoaded, чтобы убедиться, что DOM загружен
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        // Проверяем, не создан ли уже экземпляр
-        if (!window.chatBotInstance) {
-            window.chatBotInstance = new ChatBot();
-        }
-    });
-} else {
-    // DOM уже загружен
-    if (!window.chatBotInstance) {
-        window.chatBotInstance = new ChatBot();
+// ГАРАНТИРОВАННО ОДИН ЭКЗЕМПЛЯР
+(function() {
+    // Проверяем, создан ли уже экземпляр
+    if (window.chatBotInstance) {
+        console.warn('Чат-бот уже запущен!');
+        return;
     }
-}
+    
+    // Ждем полной загрузки DOM
+    const initBot = () => {
+        if (document.getElementById('chatMessages')) {
+            window.chatBotInstance = new ChatBot();
+        } else {
+            setTimeout(initBot, 100);
+        }
+    };
+    
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initBot);
+    } else {
+        initBot();
+    }
+})();
