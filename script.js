@@ -6,6 +6,7 @@ class ChatBot {
         this.numbers = [];
         this.operation = '';
         this.isProcessing = false;
+        this.isInitialized = false;
         this.messagesContainer = document.getElementById('chatMessages');
         this.inputField = document.getElementById('messageInput');
         this.sendButton = document.getElementById('sendButton');
@@ -14,6 +15,10 @@ class ChatBot {
     }
 
     init() {
+        // Проверяем, не инициализирован ли уже бот
+        if (this.isInitialized) return;
+        this.isInitialized = true;
+
         this.inputField.addEventListener('input', () => this.handleInputChange());
         this.sendButton.addEventListener('click', () => this.handleSend());
         this.inputField.addEventListener('keydown', (e) => {
@@ -23,15 +28,15 @@ class ChatBot {
             }
         });
 
-        // Приветственное сообщение
+        // Приветственное сообщение (только один раз)
         setTimeout(() => {
             this.addMessage('bot', '👋 Привет! Я Чат-бот калькулятор. Напиши /start для начала общения.');
-        }, 500);
+        }, 300);
     }
 
     handleInputChange() {
-        const text = this.inputField.value.trim();
-        if (text.length > 0) {
+        const text = this.inputField.value;
+        if (text.trim().length > 0) {
             this.sendButton.classList.add('active');
             this.sendButton.disabled = false;
         } else {
@@ -72,13 +77,36 @@ class ChatBot {
         await this.delay(500 + Math.random() * 500);
 
         try {
-            if (this.state === 'idle') {
-                if (text === '/start') {
+            // Проверяем команды в любом состоянии
+            if (text === '/start') {
+                if (this.state === 'idle' || this.state === 'waiting_name') {
                     this.state = 'waiting_name';
+                    this.userName = '';
+                    this.numbers = [];
+                    this.operation = '';
                     this.addMessage('bot', 'Привет, меня зовут Чат-бот, а как зовут тебя?');
                 } else {
-                    this.addMessage('bot', 'Введите команду /start, для начала общения');
+                    // Если уже в процессе, сбрасываем и начинаем заново
+                    this.resetState();
+                    this.state = 'waiting_name';
+                    this.addMessage('bot', 'Начинаем заново! Как тебя зовут?');
                 }
+                this.isProcessing = false;
+                this.scrollToBottom();
+                return;
+            }
+
+            if (text === '/stop') {
+                this.addMessage('bot', 'Всего доброго, если хочешь поговорить пиши /start');
+                this.resetState();
+                this.isProcessing = false;
+                this.scrollToBottom();
+                return;
+            }
+
+            // Обработка по состоянию
+            if (this.state === 'idle') {
+                this.addMessage('bot', 'Введите команду /start, для начала общения');
             } 
             else if (this.state === 'waiting_name') {
                 if (text.startsWith('/')) {
@@ -96,6 +124,8 @@ class ChatBot {
                     const numbers = text.split(',').map(n => parseFloat(n.trim()));
                     if (numbers.some(isNaN)) {
                         this.addMessage('bot', 'Пожалуйста, введите корректные числа через запятую');
+                    } else if (numbers.length < 2) {
+                        this.addMessage('bot', 'Пожалуйста, введите хотя бы два числа через запятую');
                     } else {
                         this.numbers = numbers;
                         this.state = 'waiting_operation';
@@ -104,30 +134,25 @@ class ChatBot {
                 }
             }
             else if (this.state === 'waiting_operation') {
-                if (text === '/stop') {
-                    this.addMessage('bot', 'Всего доброго, если хочешь поговорить пиши /start');
-                    this.resetState();
-                } else if (['+', '-', '*', '/'].includes(text)) {
+                if (['+', '-', '*', '/'].includes(text)) {
                     this.operation = text;
-                    const result = this.calculate();
-                    this.addMessage('bot', `Результат: ${this.numbers.join(' ' + this.operation + ' ')} = ${result}`);
-                    this.resetState();
-                    this.addMessage('bot', 'Введите /start для нового вычисления или /stop для завершения');
+                    try {
+                        const result = this.calculate();
+                        const expression = this.numbers.join(` ${this.operation} `);
+                        this.addMessage('bot', `Результат: ${expression} = ${result}`);
+                        this.addMessage('bot', `Отличный результат! Могу еще что-то посчитать. Введи /start для нового вычисления или /stop для завершения`);
+                        this.resetState();
+                    } catch (error) {
+                        this.addMessage('bot', `Ошибка: ${error.message}`);
+                        this.state = 'waiting_numbers';
+                        this.addMessage('bot', 'Введи новые числа через запятую');
+                    }
                 } else {
                     this.addMessage('bot', 'Пожалуйста, введите одну из операций: +, -, *, /');
                 }
             }
             else {
-                if (text === '/start') {
-                    this.resetState();
-                    this.state = 'waiting_name';
-                    this.addMessage('bot', 'Привет, меня зовут Чат-бот, а как зовут тебя?');
-                } else if (text === '/stop') {
-                    this.addMessage('bot', 'Всего доброго, если хочешь поговорить пиши /start');
-                    this.resetState();
-                } else {
-                    this.addMessage('bot', 'Я не понимаю, введите другую команду!');
-                }
+                this.addMessage('bot', 'Я не понимаю, введите другую команду!');
             }
         } catch (error) {
             this.addMessage('bot', 'Произошла ошибка. Попробуйте снова.');
@@ -147,11 +172,12 @@ class ChatBot {
                 case '*': result *= this.numbers[i]; break;
                 case '/': 
                     if (this.numbers[i] === 0) {
-                        throw new Error('Деление на ноль');
+                        throw new Error('Деление на ноль невозможно');
                     }
                     result /= this.numbers[i]; 
                     break;
-                default: break;
+                default: 
+                    throw new Error('Неизвестная операция');
             }
         }
         return Math.round(result * 100) / 100;
@@ -174,12 +200,11 @@ class ChatBot {
         avatar.className = 'avatar';
         avatar.src = type === 'bot' ? 'assets/bot_avatar.png' : 'assets/user_avatar.png';
         avatar.alt = type === 'bot' ? 'Бот' : 'Пользователь';
+        avatar.loading = 'lazy';
 
         // Контент сообщения
         const contentDiv = document.createElement('div');
         contentDiv.className = 'message-content';
-        
-        // Обработка текста (поддержка переносов строк)
         contentDiv.textContent = content;
 
         // Собираем сообщение
@@ -201,6 +226,7 @@ class ChatBot {
         avatar.className = 'avatar';
         avatar.src = 'assets/bot_avatar.png';
         avatar.alt = 'Бот печатает';
+        avatar.loading = 'lazy';
         
         const dots = document.createElement('div');
         dots.className = 'typing-dots';
@@ -231,6 +257,17 @@ class ChatBot {
 }
 
 // Инициализация чат-бота при загрузке страницы
-document.addEventListener('DOMContentLoaded', () => {
-    const bot = new ChatBot();
-});
+// Используем DOMContentLoaded, чтобы убедиться, что DOM загружен
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        // Проверяем, не создан ли уже экземпляр
+        if (!window.chatBotInstance) {
+            window.chatBotInstance = new ChatBot();
+        }
+    });
+} else {
+    // DOM уже загружен
+    if (!window.chatBotInstance) {
+        window.chatBotInstance = new ChatBot();
+    }
+}
